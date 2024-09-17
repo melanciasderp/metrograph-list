@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
-TMDB_API_KEY = 'cc92fb63929eafc18cfefeadc8c3fb27' # Replace with your actual TMDb API key
+TMDB_API_KEY =  os.getenv("TMDB_API_KEY") # Replace with your actual TMDb API key
 
 def get_tmdb_id(title):
     search_url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={title}"
