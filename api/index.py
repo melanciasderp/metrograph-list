@@ -31,9 +31,8 @@ def get_movies():
         tmdb_id = tmdb.get('id',None)
         movie = {
             'title': title,
-            'tmdbId': tmdb_id,
-            'tmdbid': tmdb_id,
-            'tmdb_id': tmdb_id
+            'TmdbId': tmdb_id,
+            'id': tmdb_id
         }
         movies.append(movie) if tmdb_id else None
 
