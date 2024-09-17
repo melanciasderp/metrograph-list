@@ -12,8 +12,9 @@ def get_tmdb_id(title):
     if response.status_code == 200:
         results = response.json().get('results', [])
         if results:
-            return results[0]['id']
-    return None
+             if results[0]['title'] == title:
+                 return results[0]
+    return {}
 
 @app.route('/')
 def get_movies():
@@ -26,11 +27,13 @@ def get_movies():
     # Create a list of dictionaries with movie titles and TMDb IDs
     movies = []
     for title in movie_titles:
-        tmdb_id = get_tmdb_id(title)
+        tmdb = get_tmdb_id(title)
+        tmdb_id = tmdb.get('id',None)
         movie = {
             'title': title,
-            'id': tmdb_id,
-            'tmdbId': tmdb_id
+            'tmdbId': tmdb_id,
+            'tmdbid': tmdb_id,
+            'tmdb_id': tmdb_id
         }
         movies.append(movie) if tmdb_id else None
 
