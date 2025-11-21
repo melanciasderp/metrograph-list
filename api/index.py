@@ -1,57 +1,106 @@
+import requests
 from flask import Flask, jsonify
-import requests, os, re
 from bs4 import BeautifulSoup
+import os
+import sys
+
+
+import re
+
+def scrape_metrograph_films():
+    url = "https://metrograph.com/film/"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching {url}: {e}", file=sys.stderr)
+        return []
+
+    soup = BeautifulSoup(response.content, 'html.parser')
+    
+    # Based on inspection: h3.movie_title > a
+    # Year is in a following h5, e.g. <h5>1985 / 71min / 4K DCP</h5>
+    films = []
+    for h3 in soup.select('h3.movie_title'):
+        a_tag = h3.find('a')
+        if a_tag:
+            title = a_tag.get_text(strip=True)
+            if title:
+                # Find year in siblings
+                year = None
+                # The h3 is inside a col-sm-6. We need to look at siblings of h3.
+                # Structure: h3, div.showtimes, h5 (Director), h5 (Year/...)
+                for sibling in h3.find_next_siblings('h5'):
+                    text = sibling.get_text(strip=True)
+                    # Match 4 digits at start
+                    match = re.match(r'^(\d{4})', text)
+                    if match:
+                        year = match.group(1)
+                        break
+                
+                films.append((title, year))
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_films = []
+    for title, year in films:
+        # Use title as unique key, or title+year? Let's use title for now to match previous logic
+        if title not in seen:
+            unique_films.append((title, year))
+            seen.add(title)
+            
+    return unique_films
+
+def get_tmdb_data(title, api_key, year=None):
+    search_url = "https://api.themoviedb.org/3/search/movie"
+    params = {
+        "api_key": api_key,
+        "query": title,
+        "include_adult": "false"
+    }
+    if year:
+        params['primary_release_year'] = year
+    
+    try:
+        response = requests.get(search_url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('results'):
+            # Return the first result's ID and Title
+            result = data['results'][0]
+            return result['id'], result['title']
+        else:
+            return None, None
+    except requests.RequestException as e:
+        print(f"Error searching TMDB for '{title}': {e}", file=sys.stderr)
+        return None, None
+
 
 app = Flask(__name__)
 
-TMDB_API_KEY =  os.getenv("TMDB_API_KEY") # Replace with your actual TMDb API key
-pattern=r"\b\d{4}\b" # match release date from website
+# ... (keep existing functions scrape_metrograph_films and get_tmdb_data) ...
 
-def get_tmdb_id(title, date=""):
-    search_url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={title}"
-    if date != "":
-        search_url+=f"&year={date}"
-    response = requests.get(search_url)
-    if response.status_code == 200:
-        results = response.json().get('results', [])
-        if results:
-             if results[0]['title'] == title:
-                 return results[0]
-    return {}
 
 @app.route('/')
-def get_movie_details():
-    # Scrape movie titles from Metrograph
-    url = "https://metrograph.com/film/"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
-    movie_banners = soup.find_all("div",{"class":"col-sm-12"})
+def index():
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        return jsonify({"error": "TMDB_API_KEY not set"}), 500
+        
+    films = scrape_metrograph_films()
+    results = []
+    for title, year in films:
+        tmdb_id, tmdb_title = get_tmdb_data(title, api_key, year)
+        if tmdb_id:
+            results.append({
+                "title": tmdb_title,
+                "TmdbId": tmdb_id,
+                "id": tmdb_id
+            })
+            
+    return jsonify(results)
 
-    movies = []
 
-    for movie_details in movie_banners:
-        try:
-            movie_name = movie_details.select("h3")[0].text.strip()
-            details = [a.text.strip() for a in movie_details.select("h5")]
-            date=""
-
-            for text in details:
-                date_match = re.search(pattern,text)
-                if date_match:
-                    date = date_match.group(0)
-
-            tmdb = get_tmdb_id(movie_name,date)
-            tmdb_id = tmdb.get('id',None)
-            movie = {
-                'title': movie_name,
-                'TmdbId': tmdb_id,
-                'id': tmdb_id,
-            }
-            movies.append(movie) if tmdb_id else None
-        except IndexError:
-            pass
-
-    return jsonify(movies)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
