@@ -1,5 +1,5 @@
 import requests
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from bs4 import BeautifulSoup
 import os
 import sys
