@@ -82,7 +82,7 @@ app = Flask(__name__)
 # ... (keep existing functions scrape_metrograph_films and get_tmdb_data) ...
 
 
-import vercel_blob
+import vercel.blob
 from datetime import datetime, timedelta, timezone
 import json
 
@@ -106,8 +106,8 @@ def update_cache(api_key):
     # Upload to cache
     error = None
     try:
-        # vercel_blob.put takes bytes
-        vercel_blob.put(CACHE_FILE, json.dumps(results).encode('utf-8'), {'addRandomSuffix': 'false', 'allowOverwrite': 'true'})
+        # vercel.blob.put takes bytes
+        vercel.blob.put(CACHE_FILE, json.dumps(results).encode('utf-8'), add_random_suffix=False, overwrite=True)
     except Exception as e:
         print(f"Cache upload failed: {e}", file=sys.stderr)
         error = str(e)
@@ -122,22 +122,27 @@ def index():
     
     # Check cache
     try:
-        blobs = vercel_blob.list({'limit': '1000'}) # List blobs to find cache
-        cache_blob = next((b for b in blobs.get('blobs', []) if b['pathname'] == CACHE_FILE), None)
+        # Use head to check if file exists and get metadata
+        cache_blob = vercel.blob.head(CACHE_FILE)
         
         if cache_blob:
             # Check TTL (1 Day)
-            uploaded_at_str = cache_blob['uploadedAt']
-            if uploaded_at_str.endswith('Z'):
-                uploaded_at_str = uploaded_at_str[:-1] + '+00:00'
+            # HeadBlobResult is an object, use dot notation
+            uploaded_at = cache_blob.uploaded_at
+            # uploaded_at is likely already a datetime object in the SDK, but let's verify or handle string
+            # If it's a string:
+            if isinstance(uploaded_at, str):
+                if uploaded_at.endswith('Z'):
+                    uploaded_at = uploaded_at[:-1] + '+00:00'
+                uploaded_at = datetime.fromisoformat(uploaded_at)
             
-            uploaded_at = datetime.fromisoformat(uploaded_at_str)
             if datetime.now(timezone.utc) - uploaded_at < timedelta(days=1):
                 # Cache is valid, download and serve
-                cache_resp = requests.get(cache_blob['url'])
+                cache_resp = requests.get(cache_blob.url)
                 cache_resp.raise_for_status()
                 return jsonify(cache_resp.json())
     except Exception as e:
+        # If blob not found or other error, proceed to scrape
         print(f"Cache check failed: {e}", file=sys.stderr)
         
     # Cache missing or expired, update it
