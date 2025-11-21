@@ -147,6 +147,16 @@ def index():
 
 @app.route('/cron')
 def cron():
+    # Check Authorization header
+    auth_header = request.headers.get('Authorization')
+    cron_secret = os.environ.get("CRON_SECRET")
+    
+    if not cron_secret:
+         return jsonify({"error": "CRON_SECRET not set"}), 500
+         
+    if not auth_header or auth_header != f"Bearer {cron_secret}":
+        return jsonify({"error": "Unauthorized"}), 401
+
     api_key = os.environ.get("TMDB_API_KEY")
     if not api_key:
         return jsonify({"error": "TMDB_API_KEY not set"}), 500
