@@ -140,7 +140,9 @@ def index():
                 # Cache is valid, download and serve
                 cache_resp = requests.get(cache_blob.url)
                 cache_resp.raise_for_status()
-                return jsonify(cache_resp.json())
+                response = jsonify(cache_resp.json())
+                response.headers['Cache-Control'] = 'public, max-age=43200, s-maxage=43200'
+                return response
     except Exception as e:
         # If blob not found or other error, proceed to scrape
         print(f"Cache check failed: {e}", file=sys.stderr)
@@ -148,7 +150,9 @@ def index():
     # Cache missing or expired, update it
     results, error = update_cache(api_key)
     # We return results even if cache upload failed, but log it (already logged in update_cache)
-    return jsonify(results)
+    response = jsonify(results)
+    response.headers['Cache-Control'] = 'public, max-age=43200, s-maxage=43200'
+    return response
 
 @app.route('/cron')
 def cron():
